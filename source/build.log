@@ -43,14 +43,14 @@ to this project's gradle.properties.
 > Task :app:createDebugCompatibleScreenManifests
 > Task :app:extractDeepLinksDebug
 > Task :lib:extractDeepLinksDebug
-> Task :app:mergeDebugResources
-> Task :lib:compileDebugLibraryResources
-> Task :lib:parseDebugLocalResources
 > Task :lib:processDebugManifest
-> Task :lib:generateDebugRFile
+> Task :app:mergeDebugResources
 > Task :app:processDebugMainManifest
 > Task :app:processDebugManifest
 > Task :app:processDebugManifestForPackage
+> Task :lib:compileDebugLibraryResources
+> Task :lib:parseDebugLocalResources
+> Task :lib:generateDebugRFile
 > Task :app:processDebugResources
 > Task :lib:generateDebugBuildConfig
 > Task :lib:javaPreCompileDebug
@@ -66,14 +66,8 @@ to this project's gradle.properties.
 > Task :app:processDebugJavaRes NO-SOURCE
 > Task :lib:processDebugJavaRes NO-SOURCE
 > Task :app:mergeDebugJavaResource
-> Task :lib:compileDebugAidl
 > Task :app:checkDebugDuplicateClasses
-
-> Task :lib:compileDebugJavaWithJavac
-Note: Some input files use or override a deprecated API.
-Note: Recompile with -Xlint:deprecation for details.
-Note: Some input files use unchecked or unsafe operations.
-Note: Recompile with -Xlint:unchecked for details.
+> Task :lib:compileDebugAidl
 
 > Task :app:desugarDebugFileDependencies
 WARNING: /home/runner/work/Pegasus/Pegasus/extracted/VirtualApp/app/libs/TencentMapSearch_v1.1.7.3207904.jar: D8: Expected stack map table for method with non-linear control flow.
@@ -444,6 +438,13 @@ WARNING: /home/runner/work/Pegasus/Pegasus/extracted/VirtualApp/app/libs/Tencent
 WARNING: /home/runner/work/Pegasus/Pegasus/extracted/VirtualApp/app/libs/TencentMapSearch_v1.1.7.3207904.jar: D8: Expected stack map table for method with non-linear control flow.
 WARNING: /home/runner/work/Pegasus/Pegasus/extracted/VirtualApp/app/libs/TencentMapSearch_v1.1.7.3207904.jar: D8: Expected stack map table for method with non-linear control flow.
 
+> Task :lib:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+Note: Some input files use unchecked or unsafe operations.
+Note: Recompile with -Xlint:unchecked for details.
+
+> Task :app:mergeDebugStartupProfile
 > Task :lib:bundleLibCompileToJarDebug
 
 > Task :app:compileDebugJavaWithJavac
@@ -452,22 +453,21 @@ Note: Recompile with -Xlint:deprecation for details.
 Note: Some input files use unchecked or unsafe operations.
 Note: Recompile with -Xlint:unchecked for details.
 
-> Task :app:mergeDebugStartupProfile
-> Task :lib:bundleLibRuntimeToJarDebug
 > Task :app:mergeExtDexDebug
-> Task :app:dexBuilderDebug
-> Task :app:mergeLibDexDebug
-> Task :app:mergeProjectDexDebug
 > Task :app:mergeDebugJniLibFolders
+> Task :lib:bundleLibRuntimeToJarDebug
 > Task :lib:configureNdkBuildDebug[armeabi-v7a]
+> Task :app:dexBuilderDebug
+> Task :app:mergeProjectDexDebug
 > Task :lib:buildNdkBuildDebug[armeabi-v7a]
 > Task :lib:mergeDebugJniLibFolders
 > Task :lib:mergeDebugNativeLibs
+> Task :app:mergeLibDexDebug
+> Task :lib:copyDebugJniLibsProjectOnly
 > Task :app:validateSigningDebug
 > Task :app:writeDebugAppMetadata
-> Task :lib:copyDebugJniLibsProjectOnly
-> Task :app:writeDebugSigningConfigVersions
 > Task :app:mergeDebugNativeLibs
+> Task :app:writeDebugSigningConfigVersions
 
 > Task :app:stripDebugDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libtencentloc.so.
@@ -484,12 +484,12 @@ Unable to strip the following libraries, packaging them as they are: libtencentl
 > Task :lib:prepareLintJarForPublish
 > Task :lib:mergeDebugJavaResource
 > Task :lib:syncDebugLibJars
+> Task :lib:bundleDebugAar
+> Task :lib:assembleDebug
 > Task :app:packageDebug
 > Task :app:createDebugApkListingFileRedirect
 > Task :app:assembleDebug
-> Task :lib:bundleDebugAar
-> Task :lib:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1795636839291.json
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1795639530187.json
 
-BUILD SUCCESSFUL in 1m 9s
+BUILD SUCCESSFUL in 1m 17s
 68 actionable tasks: 68 executed
