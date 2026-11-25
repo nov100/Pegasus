@@ -1,13 +1,16 @@
-name: Extract ZIP and Build APK
+name: Build VirtualApp APK
 
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
     paths:
-      - '*.zip'
+      - 'source/**'
+      - '.github/workflows/build.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -29,6 +32,7 @@ jobs:
 
           set +o pipefail
           yes | "$SDKM" --sdk_root="$SDK" --licenses > /dev/null || true
+          set -o pipefail
 
           "$SDKM" --sdk_root="$SDK" \
             "ndk;26.1.10909125" \
@@ -39,31 +43,9 @@ jobs:
         with:
           gradle-version: 8.9
 
-      - name: Extract project
+      - name: Build patched source
         shell: bash
-        run: |
-          ZIP=$(ls *.zip | sort | tail -n1)
-
-          echo "Using $ZIP"
-
-          rm -rf extracted
-          mkdir extracted
-
-          unzip -q "$ZIP" -d extracted
-
-          ROOT=$(dirname "$(find extracted -name settings.gradle | head -n1)")
-
-          if [ ! -f "$ROOT/settings.gradle" ]; then
-            echo "settings.gradle not found"
-            exit 1
-          fi
-
-          echo "ROOT=$ROOT" >> "$GITHUB_ENV"
-          echo "Project root: $ROOT"
-
-      - name: Build debug APK
-        shell: bash
-        working-directory: ${{ env.ROOT }}
+        working-directory: source
         run: gradle --no-daemon assembleDebug 2>&1 | tee build.log
 
       - name: Show build errors
@@ -72,43 +54,14 @@ jobs:
         run: |
           echo '### Build errors' >> "$GITHUB_STEP_SUMMARY"
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-
           grep -E \
             "error:|FAILED|What went wrong|Execution failed|not found|cannot find" \
-            "$ROOT/build.log" | head -100 \
+            source/build.log | head -100 \
             >> "$GITHUB_STEP_SUMMARY" || true
-
           echo '```' >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Commit extracted source
-        if: success()
-        shell: bash
-        run: |
-          rm -rf source
-          mkdir source
-
-          cp -a "$ROOT"/. source/
-
-          rm -rf source/.git
-          rm -rf source/.gradle
-
-          find source -type d -name build -prune -exec rm -rf {} +
-
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add source
-
-          if git diff --cached --quiet; then
-            echo "No source changes"
-          else
-            git commit -m "Extract VirtualApp source from ZIP"
-            git push
-          fi
 
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: VirtualApp-debug-apk
-          path: ${{ env.ROOT }}/app/build/outputs/apk/debug/*.apk
-          
+          name: VirtualApp-phase2j-debug-apk
+          path: source/app/build/outputs/apk/debug/*.apk
