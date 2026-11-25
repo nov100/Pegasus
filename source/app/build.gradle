@@ -10,10 +10,10 @@ android {
     defaultConfig {
         applicationId "io.virtualapp"
         minSdk 21
-        // Android 14+/15 refuse to install apps targeting too-old SDKs.
         targetSdk 28
-        versionCode 24
-        versionName "1.2.5"
+        versionCode 25
+        versionName "1.2.5-phase2j"
+        buildConfigField "String", "VA_BUILD", '"phase2j"'
         multiDexEnabled true
         ndk {
             abiFilters(*project.property('vaAbis').split(','))
