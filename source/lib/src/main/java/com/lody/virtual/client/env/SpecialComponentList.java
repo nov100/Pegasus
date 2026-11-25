@@ -4,7 +4,6 @@ import android.Manifest;
 import android.app.DownloadManager;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.os.Build;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -15,21 +14,14 @@ import java.util.ListIterator;
 import java.util.Map;
 import java.util.Set;
 
-import mirror.android.webkit.IWebViewUpdateService;
-import mirror.android.webkit.WebViewFactory;
-
-/**
- * @author Lody
- */
 public final class SpecialComponentList {
-
     private static final List<String> ACTION_BLACK_LIST = new ArrayList<String>(1);
     private static final Map<String, String> PROTECTED_ACTION_MAP = new HashMap<>(5);
     private static final HashSet<String> WHITE_PERMISSION = new HashSet<>(3);
-    private static final HashSet<String> INSTRUMENTATION_CONFLICTING = new HashSet<>(2);
-    private static final HashSet<String> SPEC_SYSTEM_APP_LIST = new HashSet<>(3);
-    private static final Set<String> SYSTEM_BROADCAST_ACTION = new HashSet<>(7);
-    private static String PROTECT_ACTION_PREFIX = "_VA_protected_";
+    private static final HashSet<String> INSTRUMENTATION_CONFLICTING = new HashSet<>(3);
+    private static final HashSet<String> SPEC_SYSTEM_APP_LIST = new HashSet<>(5);
+    private static final Set<String> SYSTEM_BROADCAST_ACTION = new HashSet<>(24);
+    private static final String PROTECT_ACTION_PREFIX = "_VA_protected_";
 
     static {
         SYSTEM_BROADCAST_ACTION.add(DownloadManager.ACTION_DOWNLOAD_COMPLETE);
@@ -57,7 +49,6 @@ public final class SpecialComponentList {
         SYSTEM_BROADCAST_ACTION.add("android.location.MODE_CHANGED");
 
         ACTION_BLACK_LIST.add("android.appwidget.action.APPWIDGET_UPDATE");
-
         WHITE_PERMISSION.add("com.google.android.gms.settings.SECURITY_SETTINGS");
         WHITE_PERMISSION.add("com.google.android.apps.plus.PRIVACY_SETTINGS");
         WHITE_PERMISSION.add(Manifest.permission.ACCOUNT_MANAGER);
@@ -72,148 +63,74 @@ public final class SpecialComponentList {
         INSTRUMENTATION_CONFLICTING.add("com.qihoo.magic_mutiple");
         INSTRUMENTATION_CONFLICTING.add("com.facebook.katana");
 
+        // Avoid WebViewFactory hidden APIs during class initialization. Android 15 may load
+        // this class before Application.attach(), when WebViewFactory dereferences a null app.
         SPEC_SYSTEM_APP_LIST.add("android");
         SPEC_SYSTEM_APP_LIST.add("com.google.android.webview");
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            try {
-                String webViewPkgN = IWebViewUpdateService.getCurrentWebViewPackageName.call(WebViewFactory.getUpdateService.call());
-                if (webViewPkgN != null) {
-                    SPEC_SYSTEM_APP_LIST.add(webViewPkgN);
-                }
-            } catch (Throwable e) {
-                // phase2f: Application is not attached yet when this class initialises, so the
-                // lookup NPEs on newer Android. Fall back to the well-known WebView packages.
-                SPEC_SYSTEM_APP_LIST.add("com.android.webview");
-                SPEC_SYSTEM_APP_LIST.add("com.google.android.trichromelibrary");
-            }
-        }
+        SPEC_SYSTEM_APP_LIST.add("com.android.webview");
+        SPEC_SYSTEM_APP_LIST.add("com.google.android.trichromelibrary");
+        SPEC_SYSTEM_APP_LIST.add("com.android.chrome");
     }
 
-    public static boolean isSpecSystemPackage(String pkg) {
-        return SPEC_SYSTEM_APP_LIST.contains(pkg);
-    }
-
-    public static boolean isConflictingInstrumentation(String packageName) {
-        return INSTRUMENTATION_CONFLICTING.contains(packageName);
-    }
-
-    /**
-     * Check if the action in the BlackList.
-     *
-     * @param action Action
-     */
-    public static boolean isActionInBlackList(String action) {
-        return ACTION_BLACK_LIST.contains(action);
-    }
-
-    /**
-     * Add an action to the BlackList.
-     *
-     * @param action action
-     */
-    public static void addBlackAction(String action) {
-        ACTION_BLACK_LIST.add(action);
-    }
+    public static boolean isSpecSystemPackage(String pkg) { return SPEC_SYSTEM_APP_LIST.contains(pkg); }
+    public static boolean isConflictingInstrumentation(String packageName) { return INSTRUMENTATION_CONFLICTING.contains(packageName); }
+    public static boolean isActionInBlackList(String action) { return ACTION_BLACK_LIST.contains(action); }
+    public static void addBlackAction(String action) { ACTION_BLACK_LIST.add(action); }
 
     public static void protectIntentFilter(IntentFilter filter) {
-        if (filter == null) {
-            return;
-        }
-        Object actionsObj = mirror.android.content.IntentFilter.mActions.get(filter);
-        if (actionsObj == null) {
-            return;
-        }
-        if (actionsObj instanceof List) {
-            // Older Android: IntentFilter.mActions is an ArrayList<String>.
-            @SuppressWarnings("unchecked")
-            List<String> actions = (List<String>) actionsObj;
-            ListIterator<String> iterator = actions.listIterator();
-            while (iterator.hasNext()) {
-                String action = iterator.next();
-                if (SpecialComponentList.isActionInBlackList(action)) {
-                    iterator.remove();
-                    continue;
-                }
-                if (SYSTEM_BROADCAST_ACTION.contains(action)) {
-                    continue;
-                }
-                String newAction = SpecialComponentList.protectAction(action);
-                if (newAction != null) {
-                    iterator.set(newAction);
-                }
+        if (filter == null) return;
+        Object obj = mirror.android.content.IntentFilter.mActions.get(filter);
+        if (obj == null) return;
+        if (obj instanceof List) {
+            @SuppressWarnings("unchecked") List<String> actions = (List<String>) obj;
+            ListIterator<String> it = actions.listIterator();
+            while (it.hasNext()) {
+                String action = it.next();
+                if (isActionInBlackList(action)) { it.remove(); continue; }
+                if (SYSTEM_BROADCAST_ACTION.contains(action)) continue;
+                String replacement = protectAction(action);
+                if (replacement != null) it.set(replacement);
             }
-        } else if (actionsObj instanceof Collection) {
-            // Newer Android (seen on Android 15): IntentFilter.mActions is an
-            // android.util.ArraySet<String>, which has no ListIterator, so
-            // build the remove/add sets separately instead.
-            @SuppressWarnings("unchecked")
-            Collection<String> actions = (Collection<String>) actionsObj;
-            List<String> toRemove = new ArrayList<>();
-            List<String> toAdd = new ArrayList<>();
+        } else if (obj instanceof Collection) {
+            @SuppressWarnings("unchecked") Collection<String> actions = (Collection<String>) obj;
+            List<String> remove = new ArrayList<>();
+            List<String> add = new ArrayList<>();
             for (String action : actions) {
-                if (SpecialComponentList.isActionInBlackList(action)) {
-                    toRemove.add(action);
-                    continue;
-                }
-                if (SYSTEM_BROADCAST_ACTION.contains(action)) {
-                    continue;
-                }
-                String newAction = SpecialComponentList.protectAction(action);
-                if (newAction != null) {
-                    toRemove.add(action);
-                    toAdd.add(newAction);
-                }
+                if (isActionInBlackList(action)) { remove.add(action); continue; }
+                if (SYSTEM_BROADCAST_ACTION.contains(action)) continue;
+                String replacement = protectAction(action);
+                if (replacement != null) { remove.add(action); add.add(replacement); }
             }
-            actions.removeAll(toRemove);
-            actions.addAll(toAdd);
+            actions.removeAll(remove);
+            actions.addAll(add);
         }
     }
 
     public static void protectIntent(Intent intent) {
-        String protectAction = protectAction(intent.getAction());
-        if (protectAction != null) {
-            intent.setAction(protectAction);
-        }
+        String action = protectAction(intent.getAction());
+        if (action != null) intent.setAction(action);
     }
 
     public static void unprotectIntent(Intent intent) {
-        String unprotectAction = unprotectAction(intent.getAction());
-        if (unprotectAction != null) {
-            intent.setAction(unprotectAction);
-        }
+        String action = unprotectAction(intent.getAction());
+        if (action != null) intent.setAction(action);
     }
 
-    public static String protectAction(String originAction) {
-        if (originAction == null) {
-            return null;
-        }
-        if (originAction.startsWith("_VA_")) {
-            return originAction;
-        }
-        String newAction = PROTECTED_ACTION_MAP.get(originAction);
-        if (newAction == null) {
-            newAction = PROTECT_ACTION_PREFIX + originAction;
-        }
-        return newAction;
+    public static String protectAction(String origin) {
+        if (origin == null) return null;
+        if (origin.startsWith("_VA_")) return origin;
+        String value = PROTECTED_ACTION_MAP.get(origin);
+        return value != null ? value : PROTECT_ACTION_PREFIX + origin;
     }
 
     public static String unprotectAction(String action) {
-        if (action == null) {
-            return null;
-        }
-        if (action.startsWith(PROTECT_ACTION_PREFIX)) {
-            return action.substring(PROTECT_ACTION_PREFIX.length());
-        }
-        for (Map.Entry<String, String> next : PROTECTED_ACTION_MAP.entrySet()) {
-            String modifiedAction = next.getValue();
-            if (modifiedAction.equals(action)) {
-                return next.getKey();
-            }
+        if (action == null) return null;
+        if (action.startsWith(PROTECT_ACTION_PREFIX)) return action.substring(PROTECT_ACTION_PREFIX.length());
+        for (Map.Entry<String, String> entry : PROTECTED_ACTION_MAP.entrySet()) {
+            if (entry.getValue().equals(action)) return entry.getKey();
         }
         return null;
     }
 
-    public static boolean isWhitePermission(String permission) {
-        return WHITE_PERMISSION.contains(permission);
-    }
+    public static boolean isWhitePermission(String permission) { return WHITE_PERMISSION.contains(permission); }
 }
