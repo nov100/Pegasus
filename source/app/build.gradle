@@ -1,0 +1,59 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'io.virtualapp'
+    compileSdk 35
+    ndkVersion '26.1.10909125'
+
+    defaultConfig {
+        applicationId "io.virtualapp"
+        minSdk 21
+        // Android 14+/15 refuse to install apps targeting too-old SDKs.
+        targetSdk 28
+        versionCode 24
+        versionName "1.2.5"
+        multiDexEnabled true
+        ndk {
+            abiFilters(*project.property('vaAbis').split(','))
+        }
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    sourceSets {
+        main {
+            jniLibs.srcDirs = ['libs']
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation project(':lib')
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'org.lsposed.hiddenapibypass:hiddenapibypass:4.3'
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.recyclerview:recyclerview:1.3.2'
+    implementation 'androidx.percentlayout:percentlayout:1.0.0'
+    implementation 'androidx.cardview:cardview:1.0.0'
+    implementation 'androidx.viewpager:viewpager:1.0.0'
+    implementation 'androidx.fragment:fragment:1.6.2'
+    implementation 'androidx.coordinatorlayout:coordinatorlayout:1.2.0'
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'org.jdeferred:jdeferred-android-aar:1.2.4'
+}

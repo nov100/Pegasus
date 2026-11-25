@@ -1,0 +1,264 @@
+package com.lody.virtual.client.hook.proxies.am;
+
+import android.content.ComponentName;
+import android.content.Intent;
+import android.content.pm.ActivityInfo;
+import android.content.pm.ApplicationInfo;
+import android.content.pm.ServiceInfo;
+import android.os.Build;
+import android.os.Handler;
+import android.os.IBinder;
+import android.os.Message;
+
+import com.lody.virtual.client.VClientImpl;
+import com.lody.virtual.client.core.VirtualCore;
+import com.lody.virtual.client.interfaces.IInjector;
+import com.lody.virtual.client.ipc.VActivityManager;
+import com.lody.virtual.helper.utils.ComponentUtils;
+import com.lody.virtual.helper.utils.Reflect;
+import com.lody.virtual.helper.utils.VLog;
+import com.lody.virtual.remote.InstalledAppInfo;
+import com.lody.virtual.remote.StubActivityRecord;
+
+import mirror.android.app.ActivityManagerNative;
+import mirror.android.app.ActivityThread;
+import mirror.android.app.IActivityManager;
+
+/**
+     * @author Lody
+     * @see Handler.Callback
+     */
+    public class HCallbackStub implements Handler.Callback, IInjector {
+
+
+        // LAUNCH_ACTIVITY (100) was removed in Android 9; there activities start via EXECUTE_TRANSACTION (159).
+        private static final int LAUNCH_ACTIVITY =
+                ActivityThread.H.LAUNCH_ACTIVITY != null ? ActivityThread.H.LAUNCH_ACTIVITY.get() : -1;
+        private static final int EXECUTE_TRANSACTION =
+                ActivityThread.H.EXECUTE_TRANSACTION != null ? ActivityThread.H.EXECUTE_TRANSACTION.get() : -1;
+        private static final int CREATE_SERVICE =
+                ActivityThread.H.CREATE_SERVICE != null ? ActivityThread.H.CREATE_SERVICE.get() : -1;
+        private static final int SCHEDULE_CRASH =
+                ActivityThread.H.SCHEDULE_CRASH != null ? ActivityThread.H.SCHEDULE_CRASH.get() : -1;
+
+        private static final String TAG = HCallbackStub.class.getSimpleName();
+        private static final HCallbackStub sCallback = new HCallbackStub();
+
+        private boolean mCalling = false;
+
+
+        private Handler.Callback otherCallback;
+
+        private HCallbackStub() {
+        }
+
+        public static HCallbackStub getDefault() {
+            return sCallback;
+        }
+
+        private static Handler getH() {
+            return ActivityThread.mH.get(VirtualCore.mainThread());
+        }
+
+        private static Handler.Callback getHCallback() {
+            try {
+                Handler handler = getH();
+                return mirror.android.os.Handler.mCallback.get(handler);
+            } catch (Throwable e) {
+                e.printStackTrace();
+            }
+            return null;
+        }
+
+        @Override
+        public boolean handleMessage(Message msg) {
+            if (!mCalling) {
+                mCalling = true;
+                try {
+                    if (LAUNCH_ACTIVITY == msg.what) {
+                        if (!handleLaunchActivity(msg)) {
+                            return true;
+                        }
+                    } else if (EXECUTE_TRANSACTION == msg.what && EXECUTE_TRANSACTION != -1) {
+                        if (!handleExecuteTransaction(msg)) {
+                            return true;
+                        }
+                    } else if (CREATE_SERVICE == msg.what) {
+                        if (!VClientImpl.get().isBound()) {
+                            ServiceInfo info = Reflect.on(msg.obj).get("info");
+                            VClientImpl.get().bindApplication(info.packageName, info.processName);
+                        }
+                    } else if (SCHEDULE_CRASH == msg.what) {
+                        // to avoid the exception send from System.
+                        return true;
+                    }
+                    if (otherCallback != null) {
+                        boolean desired = otherCallback.handleMessage(msg);
+                        mCalling = false;
+                        return desired;
+                    } else {
+                        mCalling = false;
+                    }
+                } finally {
+                    mCalling = false;
+                }
+            }
+            return false;
+        }
+
+        private static java.lang.reflect.Field findField(Class<?> c, String name) {
+            while (c != null) {
+                try {
+                    java.lang.reflect.Field f = c.getDeclaredField(name);
+                    f.setAccessible(true);
+                    return f;
+                } catch (NoSuchFieldException ignore) {
+                    c = c.getSuperclass();
+                }
+            }
+            return null;
+        }
+
+        /**
+         * Android 9+: the system sends a ClientTransaction that contains a LaunchActivityItem.
+         * Do the same work as the old LAUNCH_ACTIVITY path: swap the stub intent / info for the real ones.
+         */
+        private boolean handleExecuteTransaction(Message msg) {
+            try {
+                Object transaction = msg.obj;
+                if (transaction == null) {
+                    return true;
+                }
+                java.lang.reflect.Method getCallbacks = transaction.getClass().getDeclaredMethod("getCallbacks");
+                getCallbacks.setAccessible(true);
+                java.util.List<?> callbacks = (java.util.List<?>) getCallbacks.invoke(transaction);
+                if (callbacks == null) {
+                    return true;
+                }
+                for (Object item : callbacks) {
+                    if (item == null || !item.getClass().getName().endsWith("LaunchActivityItem")) {
+                        continue;
+                    }
+                    java.lang.reflect.Field fIntent = findField(item.getClass(), "mIntent");
+                    java.lang.reflect.Field fInfo = findField(item.getClass(), "mInfo");
+                    if (fIntent == null || fInfo == null) {
+                        VLog.e(TAG, "LaunchActivityItem fields not found");
+                        return true;
+                    }
+                    IBinder token = null;
+                    java.lang.reflect.Field fToken = findField(transaction.getClass(), "mActivityToken");
+                    if (fToken != null) {
+                        token = (IBinder) fToken.get(transaction);
+                    } else {
+                        java.lang.reflect.Method getToken = transaction.getClass().getDeclaredMethod("getActivityToken");
+                        getToken.setAccessible(true);
+                        token = (IBinder) getToken.invoke(transaction);
+                    }
+                    Intent stubIntent = (Intent) fIntent.get(item);
+                    StubActivityRecord saveInstance = new StubActivityRecord(stubIntent);
+                    if (saveInstance.intent == null) {
+                        return true; // not one of our stub launches
+                    }
+                    Intent intent = saveInstance.intent;
+                    ComponentName caller = saveInstance.caller;
+                    ActivityInfo info = saveInstance.info;
+                    if (VClientImpl.get().getToken() == null) {
+                        InstalledAppInfo installedAppInfo = VirtualCore.get().getInstalledAppInfo(info.packageName, 0);
+                        if (installedAppInfo == null) {
+                            return true;
+                        }
+                        VActivityManager.get().processRestarted(info.packageName, info.processName, saveInstance.userId);
+                        getH().sendMessageAtFrontOfQueue(Message.obtain(msg));
+                        return false;
+                    }
+                    if (!VClientImpl.get().isBound()) {
+                        VClientImpl.get().bindApplication(info.packageName, info.processName);
+                        getH().sendMessageAtFrontOfQueue(Message.obtain(msg));
+                        return false;
+                    }
+                    int taskId = -1;
+                    try {
+                        taskId = getTaskId(token);
+                    } catch (Throwable e) {
+                        VLog.e(TAG, "getTaskForActivity failed: " + e);
+                    }
+                    VActivityManager.get().onActivityCreate(ComponentUtils.toComponentName(info), caller, token, info,
+                            intent, ComponentUtils.getTaskAffinity(info), taskId, info.launchMode, info.flags);
+                    ClassLoader appClassLoader = VClientImpl.get().getClassLoader(info.applicationInfo);
+                    intent.setExtrasClassLoader(appClassLoader);
+                    fIntent.set(item, intent);
+                    fInfo.set(item, info);
+                    return true;
+                }
+            } catch (Throwable e) {
+                VLog.e(TAG, "handleExecuteTransaction failed: " + e);
+                e.printStackTrace();
+            }
+            return true;
+        }
+
+        private static int getTaskId(IBinder token) throws Throwable {
+            if (Build.VERSION.SDK_INT >= 29 && mirror.android.app.ActivityTaskManager.getService != null) {
+                Object atm = mirror.android.app.ActivityTaskManager.getService.call();
+                java.lang.reflect.Method m = atm.getClass().getMethod("getTaskForActivity", IBinder.class, boolean.class);
+                return (Integer) m.invoke(atm, token, false);
+            }
+            return IActivityManager.getTaskForActivity.call(
+                    ActivityManagerNative.getDefault.call(), token, false);
+        }
+
+        private boolean handleLaunchActivity(Message msg) {
+            Object r = msg.obj;
+            Intent stubIntent = ActivityThread.ActivityClientRecord.intent.get(r);
+            StubActivityRecord saveInstance = new StubActivityRecord(stubIntent);
+            if (saveInstance.intent == null) {
+                return true;
+            }
+            Intent intent = saveInstance.intent;
+            ComponentName caller = saveInstance.caller;
+            IBinder token = ActivityThread.ActivityClientRecord.token.get(r);
+            ActivityInfo info = saveInstance.info;
+            if (VClientImpl.get().getToken() == null) {
+                InstalledAppInfo installedAppInfo = VirtualCore.get().getInstalledAppInfo(info.packageName, 0);
+                if(installedAppInfo == null){
+                    return true;
+                }
+                VActivityManager.get().processRestarted(info.packageName, info.processName, saveInstance.userId);
+                getH().sendMessageAtFrontOfQueue(Message.obtain(msg));
+                return false;
+            }
+            if (!VClientImpl.get().isBound()) {
+                VClientImpl.get().bindApplication(info.packageName, info.processName);
+                getH().sendMessageAtFrontOfQueue(Message.obtain(msg));
+                return false;
+            }
+            int taskId = IActivityManager.getTaskForActivity.call(
+                    ActivityManagerNative.getDefault.call(),
+                    token,
+                    false
+            );
+            VActivityManager.get().onActivityCreate(ComponentUtils.toComponentName(info), caller, token, info, intent, ComponentUtils.getTaskAffinity(info), taskId, info.launchMode, info.flags);
+            ClassLoader appClassLoader = VClientImpl.get().getClassLoader(info.applicationInfo);
+            intent.setExtrasClassLoader(appClassLoader);
+            ActivityThread.ActivityClientRecord.intent.set(r, intent);
+            ActivityThread.ActivityClientRecord.activityInfo.set(r, info);
+            return true;
+        }
+
+        @Override
+        public void inject() throws Throwable {
+            otherCallback = getHCallback();
+            mirror.android.os.Handler.mCallback.set(getH(), this);
+        }
+
+        @Override
+        public boolean isEnvBad() {
+            Handler.Callback callback = getHCallback();
+            boolean envBad = callback != this;
+            if (callback != null && envBad) {
+                VLog.d(TAG, "HCallback has bad, other callback = " + callback);
+            }
+            return envBad;
+        }
+
+    }
