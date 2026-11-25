@@ -1,6 +1,7 @@
 package com.lody.virtual.client.hook.proxies.view;
 
 import android.annotation.SuppressLint;
+import android.app.Application;
 import android.util.Log;
 
 import com.lody.virtual.client.hook.base.BinderInvocationProxy;
@@ -10,17 +11,13 @@ import com.lody.virtual.client.hook.utils.MethodParameterUtils;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
+import mirror.android.app.ActivityThread;
 import mirror.android.view.IAutoFillManager;
 
-/**
- * @author 陈磊.
- */
-
 public class AutoFillManagerStub extends BinderInvocationProxy {
-
     private static final String TAG = "AutoFillManagerStub";
-
     private static final String AUTO_FILL_NAME = "autofill";
+
     public AutoFillManagerStub() {
         super(IAutoFillManager.Stub.asInterface, AUTO_FILL_NAME);
     }
@@ -29,49 +26,36 @@ public class AutoFillManagerStub extends BinderInvocationProxy {
     @Override
     public void inject() throws Throwable {
         super.inject();
-        try {
-            Object AutoFillManagerInstance = getContext().getSystemService(AUTO_FILL_NAME);
-            if (AutoFillManagerInstance == null) {
-                throw new NullPointerException("AutoFillManagerInstance is null.");
-            }
-            Object AutoFillManagerProxy = getInvocationStub().getProxyInterface();
-            if (AutoFillManagerProxy == null) {
-                throw new NullPointerException("AutoFillManagerProxy is null.");
-            }
-            Field AutoFillManagerServiceField = AutoFillManagerInstance.getClass().getDeclaredField("mService");
-            AutoFillManagerServiceField.setAccessible(true);
-            AutoFillManagerServiceField.set(AutoFillManagerInstance, AutoFillManagerProxy);
-        } catch (Throwable tr) {
-            Log.e(TAG, "AutoFillManagerStub inject error.", tr);
+        addPackageProxy("startSession");
+        addPackageProxy("updateOrRestartSession");
+        addPackageProxy("isServiceEnabled");
+
+        Application application = ActivityThread.currentApplication.call();
+        if (application == null) {
+            Log.w(TAG, "Skip cached AutofillManager patch until Application is attached");
             return;
         }
+        try {
+            Object manager = application.getSystemService(AUTO_FILL_NAME);
+            Object proxy = getInvocationStub().getProxyInterface();
+            if (manager == null || proxy == null) {
+                return;
+            }
+            Field service = manager.getClass().getDeclaredField("mService");
+            service.setAccessible(true);
+            service.set(manager, proxy);
+        } catch (Throwable tr) {
+            Log.w(TAG, "Unable to patch cached AutofillManager service: " + tr);
+        }
+    }
+
+    private void addPackageProxy(final String name) {
         addMethodProxy(new MethodProxy() {
             @Override
             public String getMethodName() {
-                return "startSession";
+                return name;
             }
-            @Override
-            public boolean beforeCall(Object who, Method method, Object... args) {
-                MethodParameterUtils.replaceLastAppPkg(args);
-                return super.beforeCall(who, method, args);
-            }
-        });
-        addMethodProxy(new MethodProxy() {
-            @Override
-            public String getMethodName() {
-                return "updateOrRestartSession";
-            }
-            @Override
-            public boolean beforeCall(Object who, Method method, Object... args) {
-                MethodParameterUtils.replaceLastAppPkg(args);
-                return super.beforeCall(who, method, args);
-            }
-        });
-        addMethodProxy(new MethodProxy() {
-            @Override
-            public String getMethodName() {
-                return "isServiceEnabled";
-            }
+
             @Override
             public boolean beforeCall(Object who, Method method, Object... args) {
                 MethodParameterUtils.replaceLastAppPkg(args);
@@ -79,5 +63,4 @@ public class AutoFillManagerStub extends BinderInvocationProxy {
             }
         });
     }
-
 }
