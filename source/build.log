@@ -461,18 +461,18 @@ Note: Recompile with -Xlint:unchecked for details.
 > Task :app:mergeProjectDexDebug
 > Task :lib:buildNdkBuildDebug[armeabi-v7a]
 > Task :lib:mergeDebugJniLibFolders
-> Task :lib:mergeDebugNativeLibs
 > Task :app:mergeLibDexDebug
-> Task :lib:copyDebugJniLibsProjectOnly
+> Task :lib:mergeDebugNativeLibs
 > Task :app:validateSigningDebug
 > Task :app:writeDebugAppMetadata
-> Task :app:mergeDebugNativeLibs
+> Task :lib:copyDebugJniLibsProjectOnly
 > Task :app:writeDebugSigningConfigVersions
-
-> Task :app:stripDebugDebugSymbols
-Unable to strip the following libraries, packaging them as they are: libtencentloc.so.
+> Task :app:mergeDebugNativeLibs
 
 > Task :lib:stripDebugDebugSymbols
+Unable to strip the following libraries, packaging them as they are: libtencentloc.so.
+
+> Task :app:stripDebugDebugSymbols
 Unable to strip the following libraries, packaging them as they are: libtencentloc.so.
 
 > Task :lib:copyDebugJniLibsProjectAndLocalJars
@@ -485,11 +485,11 @@ Unable to strip the following libraries, packaging them as they are: libtencentl
 > Task :lib:mergeDebugJavaResource
 > Task :lib:syncDebugLibJars
 > Task :lib:bundleDebugAar
-> Task :lib:assembleDebug
 > Task :app:packageDebug
 > Task :app:createDebugApkListingFileRedirect
 > Task :app:assembleDebug
-gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1795639530187.json
+> Task :lib:assembleDebug
+gradle/actions: Writing build results to /home/runner/work/_temp/.gradle-actions/build-results/__run_3-1795642356143.json
 
 BUILD SUCCESSFUL in 1m 17s
 68 actionable tasks: 68 executed
